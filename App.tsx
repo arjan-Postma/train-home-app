@@ -333,6 +333,28 @@ export default function App() {
       await fetchDeps(s.code);
       return;
     }
+
+    // On web use navigator.geolocation directly — expo-location doesn't
+    // trigger the browser permission dialog reliably in a plain browser.
+    if (Platform.OS === 'web') {
+      if (!navigator.geolocation) {
+        setLocError('Je browser ondersteunt geen locatie.');
+        return;
+      }
+      navigator.geolocation.getCurrentPosition(
+        async (pos) => {
+          const s = nearestStation(pos.coords.latitude, pos.coords.longitude);
+          setStation(s);
+          await fetchDeps(s.code);
+        },
+        (err) => {
+          setLocError('Locatietoestemming geweigerd. Klik op het slotje in de adresbalk en sta locatie toe.');
+        },
+        { timeout: 10000, maximumAge: 60000 }
+      );
+      return;
+    }
+
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {

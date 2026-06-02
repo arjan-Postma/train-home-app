@@ -3,9 +3,9 @@ const https = require('https');
 const fs = require('fs');
 const path = require('path');
 
-const PORT = 3001;
+const PORT = process.env.PORT || 3001;
 const DIST = path.join(__dirname, 'dist');
-const NS_API_KEY = '7383917274334e0dad1099b05e091088';
+const NS_API_KEY = process.env.NS_API_KEY || '7383917274334e0dad1099b05e091088';
 
 const MIME = {
   '.html': 'text/html',
@@ -23,6 +23,7 @@ http.createServer((req, res) => {
   if (req.url.startsWith('/api/departures')) {
     const qs = req.url.split('?')[1] ?? '';
     const nsUrl = `https://gateway.apiportal.ns.nl/reisinformatie-api/api/v2/departures?${qs}`;
+    console.log('NS API →', nsUrl);
     const options = {
       headers: {
         'Ocp-Apim-Subscription-Key': NS_API_KEY,
@@ -30,9 +31,15 @@ http.createServer((req, res) => {
       },
     };
     https.get(nsUrl, options, (nsRes) => {
-      res.setHeader('Content-Type', 'application/json');
-      res.statusCode = nsRes.statusCode;
-      nsRes.pipe(res);
+      console.log('NS API status:', nsRes.statusCode);
+      let body = '';
+      nsRes.on('data', d => body += d);
+      nsRes.on('end', () => {
+        if (nsRes.statusCode !== 200) console.log('NS API body:', body);
+        res.setHeader('Content-Type', 'application/json');
+        res.statusCode = nsRes.statusCode;
+        res.end(body);
+      });
     }).on('error', (e) => {
       res.statusCode = 502;
       res.end(JSON.stringify({ error: e.message }));
