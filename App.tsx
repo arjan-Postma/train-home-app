@@ -208,6 +208,8 @@ const card = StyleSheet.create({
 export default function App() {
   const [station, setStation] = useState<typeof STATIONS[0] | null>(null);
   const [trips, setTrips] = useState<Trip[]>([]);
+  const [sortSnelst, setSortSnelst] = useState(false);
+  const [sortGemak, setSortGemak] = useState(false);
   const [loading, setLoading] = useState(false);
   const [locError, setLocError] = useState<string | null>(null);
   const [apiError, setApiError] = useState<string | null>(null);
@@ -363,8 +365,34 @@ export default function App() {
       {/* Top 5 list */}
       {trips.length > 0 && (
         <ScrollView style={s.list} contentContainerStyle={{ paddingBottom: 20 }}>
-          <Text style={s.listHdr}>Top {trips.length} snelste reizen</Text>
-          {trips.map((trip, i) => (
+          {/* Header row met sorteerknoppen */}
+          <View style={s.listHdrRow}>
+            <Text style={s.listHdr}>Top {trips.length} reizen</Text>
+            <View style={s.sortBtns}>
+              <TouchableOpacity
+                style={[s.sortBtn, sortSnelst && s.sortBtnOn]}
+                onPress={() => setSortSnelst(v => !v)}
+              >
+                <Text style={[s.sortBtnTxt, sortSnelst && s.sortBtnTxtOn]}>Snelst</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[s.sortBtn, sortGemak && s.sortBtnOn]}
+                onPress={() => setSortGemak(v => !v)}
+              >
+                <Text style={[s.sortBtnTxt, sortGemak && s.sortBtnTxtOn]}>Gemak</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+          {[...trips].sort((a, b) => {
+            if (sortSnelst && sortGemak) {
+              // Minste overstappen eerst, dan vroegste aankomst
+              if (a.transfers !== b.transfers) return a.transfers - b.transfers;
+              return new Date(a.arrivalTime).getTime() - new Date(b.arrivalTime).getTime();
+            }
+            if (sortSnelst) return new Date(a.arrivalTime).getTime() - new Date(b.arrivalTime).getTime();
+            if (sortGemak)  return a.transfers !== b.transfers ? a.transfers - b.transfers : new Date(a.departureTime).getTime() - new Date(b.departureTime).getTime();
+            return new Date(a.departureTime).getTime() - new Date(b.departureTime).getTime();
+          }).map((trip, i) => (
             <TrainCard key={i} trip={trip} dest={DESTINATION_LABEL} />
           ))}
         </ScrollView>
@@ -432,8 +460,14 @@ const s = StyleSheet.create({
   loadBox: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 14 },
   loadTxt: { color: '#888', fontSize: 14 },
 
-  list:    { flex: 1, paddingHorizontal: 14, paddingTop: 12 },
-  listHdr: { fontSize: 12, color: '#888', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 },
+  list:       { flex: 1, paddingHorizontal: 14, paddingTop: 12 },
+  listHdrRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
+  listHdr:    { fontSize: 12, color: '#888', textTransform: 'uppercase', letterSpacing: 0.5 },
+  sortBtns:   { flexDirection: 'row', gap: 6 },
+  sortBtn:    { borderWidth: 1.5, borderColor: '#CCC', borderRadius: 20, paddingHorizontal: 12, paddingVertical: 4 },
+  sortBtnOn:  { borderColor: BLUE, backgroundColor: BLUE },
+  sortBtnTxt: { fontSize: 12, fontWeight: '700', color: '#888' },
+  sortBtnTxtOn: { color: '#FFF' },
 
   empty:    { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 36 },
   emptyTxt: { fontSize: 16, fontWeight: '600', color: '#333', textAlign: 'center' },
