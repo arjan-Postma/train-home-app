@@ -328,6 +328,7 @@ export default function App() {
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [sortSnelst, setSortSnelst] = useState(false);
   const [sortGemak, setSortGemak] = useState(false);
+  const [filterHaalIk, setFilterHaalIk] = useState(false);
   const [loading, setLoading] = useState(false);
   const [locError, setLocError] = useState<string | null>(null);
   const [apiError, setApiError] = useState<string | null>(null);
@@ -504,11 +505,22 @@ export default function App() {
     return new Date(a.departureTime).getTime() - new Date(b.departureTime).getTime();
   });
 
-  const selectedTrip = selectedIndex !== null ? sortedTrips[selectedIndex] ?? null : null;
+  // "Haal ik" filter: keep greens (all) + max 2 oranges, remove reds
+  const visibleTrips = filterHaalIk ? (() => {
+    const secsNow = (iso: string) => secsUntil(iso);
+    const colored = visibleTrips.map(t => ({ t, color: catchColor(secsNow(t.departureTime), stationDist) }));
+    const greens   = colored.filter(x => x.color === '#22C55E' || x.color === '#84CC16').map(x => x.t);
+    const oranges  = colored.filter(x => x.color === '#F97316').map(x => x.t).slice(0, 2);
+    // Merge in original sort order
+    const kept = new Set([...greens, ...oranges]);
+    return sortedTrips.filter(t => kept.has(t));
+  })() : sortedTrips;
+
+  const selectedTrip = selectedIndex !== null ? visibleTrips[selectedIndex] ?? null : null;
 
   // Landscape: fullscreen selected trip (or first available)
-  if (isLandscape && sortedTrips.length > 0) {
-    const trip = selectedTrip ?? sortedTrips[0];
+  if (isLandscape && visibleTrips.length > 0) {
+    const trip = selectedTrip ?? visibleTrips[0];
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: BLUE }}>
         <StatusBar style="light" />
@@ -599,7 +611,7 @@ export default function App() {
       )}
 
       {/* Top 5 list */}
-      {sortedTrips.length > 0 && (
+      {visibleTrips.length > 0 && (
         <ScrollView style={s.list} contentContainerStyle={{ paddingBottom: 20 }}>
           {/* Header row met sorteerknoppen */}
           <View style={s.listHdrRow}>
@@ -617,9 +629,15 @@ export default function App() {
               >
                 <Text style={[s.sortBtnTxt, sortGemak && s.sortBtnTxtOn]}>Gemak</Text>
               </TouchableOpacity>
+              <TouchableOpacity
+                style={[s.sortBtn, filterHaalIk && s.sortBtnHaalIk]}
+                onPress={() => setFilterHaalIk(v => !v)}
+              >
+                <Text style={[s.sortBtnTxt, filterHaalIk && s.sortBtnTxtOn]}>Haal ik 🟢</Text>
+              </TouchableOpacity>
             </View>
           </View>
-          {sortedTrips.map((trip, i) => (
+          {visibleTrips.map((trip, i) => (
             <TrainCard
               key={i}
               trip={trip}
@@ -633,7 +651,7 @@ export default function App() {
       )}
 
       {/* Empty */}
-      {!loading && !apiError && !locError && sortedTrips.length === 0 && station && (
+      {!loading && !apiError && !locError && visibleTrips.length === 0 && station && (
         <View style={s.empty}>
           <Text style={s.emptyTxt}>Geen reizen naar {destination.label} gevonden.</Text>
         </View>
@@ -706,7 +724,8 @@ const s = StyleSheet.create({
   sortBtn:    { borderWidth: 1.5, borderColor: '#CCC', borderRadius: 20, paddingHorizontal: 12, paddingVertical: 4 },
   sortBtnOn:  { borderColor: BLUE, backgroundColor: BLUE },
   sortBtnTxt: { fontSize: 12, fontWeight: '700', color: '#888' },
-  sortBtnTxtOn: { color: '#FFF' },
+  sortBtnTxtOn:  { color: '#FFF' },
+  sortBtnHaalIk: { borderColor: '#22C55E', backgroundColor: '#22C55E' },
 
   empty:    { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 36 },
   emptyTxt: { fontSize: 16, fontWeight: '600', color: '#333', textAlign: 'center' },
