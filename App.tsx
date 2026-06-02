@@ -124,71 +124,42 @@ function Countdown({ iso }: { iso: string }) {
 }
 
 const cd = StyleSheet.create({
-  text:   { color: '#003082', fontSize: 15, fontWeight: '800' },
+  text:   { color: '#003082', fontSize: 22, fontWeight: '900', textAlign: 'right' },
   urgent: { color: '#FE0437' },
-  gone:   { color: '#999', fontSize: 13, fontWeight: '600' },
+  gone:   { color: '#999', fontSize: 14, fontWeight: '600' },
 });
 
-// Single train card for the top-5 list
-function TrainCard({ dep, rank }: { dep: Departure; rank: number }) {
+// Single train card: [Perron groot] [Station + tijden + overstappen] [Afteltimer groot]
+function TrainCard({ dep }: { dep: Departure }) {
   const depTime = dep.actualDateTime ?? dep.plannedDateTime;
   const track   = dep.actualTrack ?? dep.plannedTrack;
   const delayed = dep.actualDateTime && dep.actualDateTime !== dep.plannedDateTime;
-  const isNext  = rank === 1;
 
   return (
-    <View style={[card.wrap, isNext && card.wrapFirst]}>
-      {/* Left: rank + countdown */}
-      <View style={card.left}>
-        <Text style={[card.rank, isNext && card.rankFirst]}>{rank}</Text>
-        <Countdown iso={depTime} />
+    <View style={card.wrap}>
+      {/* Perron — groot links */}
+      <View style={card.perron}>
+        <Text style={card.perronLabel}>Perron</Text>
+        <Text style={card.perronNum}>{track ?? '—'}</Text>
       </View>
 
-      {/* Center: main info */}
+      {/* Midden: bestemming, tijden, overstappen */}
       <View style={card.center}>
-        {/* Bestemming */}
         <Text style={card.dest}>{dep.direction}</Text>
-        {/* Treintype */}
-        <Text style={card.trainName}>{dep.name}</Text>
-
-        {/* Row: vertrek + aankomst */}
         <View style={card.timeRow}>
-          <View style={card.timeBlock}>
-            <Text style={card.timeLabel}>Vertrek</Text>
-            <Text style={[card.timeVal, delayed && card.delayed]}>{hhmm(depTime)}</Text>
-            {delayed && (
-              <Text style={card.plannedTime}>{hhmm(dep.plannedDateTime)}</Text>
-            )}
-          </View>
-          <Text style={card.arrow}>→</Text>
-          <View style={card.timeBlock}>
-            <Text style={card.timeLabel}>Aankomst</Text>
-            <Text style={card.timeVal}>
-              {dep.arrivalTime ? hhmm(dep.arrivalTime) : '—'}
-            </Text>
-          </View>
+          <Text style={[card.timeVal, delayed && card.delayed]}>{hhmm(depTime)}</Text>
+          {delayed && <Text style={card.planned}>{hhmm(dep.plannedDateTime)}</Text>}
+          <Text style={card.arrow}> → </Text>
+          <Text style={card.timeVal}>{dep.arrivalTime ? hhmm(dep.arrivalTime) : '—'}</Text>
         </View>
+        <Text style={card.transfers}>
+          {dep.transfers === 0 ? 'Direct' : dep.transfers === 1 ? '1 overstap' : `${dep.transfers} overstappen`}
+        </Text>
       </View>
 
-      {/* Right: perron + overstappen */}
-      <View style={card.right}>
-        {track ? (
-          <View style={[card.trackBadge, isNext && card.trackBadgeFirst]}>
-            <Text style={[card.trackLabel, isNext && card.trackLabelFirst]}>Perron</Text>
-            <Text style={[card.trackNum, isNext && card.trackNumFirst]}>{track}</Text>
-          </View>
-        ) : (
-          <View style={card.trackBadge}>
-            <Text style={card.trackLabel}>Perron</Text>
-            <Text style={card.trackNum}>—</Text>
-          </View>
-        )}
-        <View style={card.transferBadge}>
-          <Text style={card.transferNum}>{dep.transfers}</Text>
-          <Text style={card.transferLabel}>
-            {dep.transfers === 1 ? 'overstap' : 'overstappen'}
-          </Text>
-        </View>
+      {/* Afteltimer — groot rechts */}
+      <View style={card.timerWrap}>
+        <Countdown iso={depTime} />
       </View>
     </View>
   );
@@ -203,57 +174,40 @@ const card = StyleSheet.create({
     backgroundColor: '#FFF',
     borderRadius: 14,
     marginBottom: 10,
-    padding: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 12,
     flexDirection: 'row',
     alignItems: 'center',
     shadowColor: '#000',
-    shadowOpacity: 0.06,
+    shadowOpacity: 0.07,
     shadowRadius: 6,
     elevation: 2,
-    borderLeftWidth: 4,
-    borderLeftColor: '#E0E0E0',
-  },
-  wrapFirst: {
-    borderLeftColor: GOLD,
-    backgroundColor: '#F5F8FF',
-    shadowOpacity: 0.12,
   },
 
-  left: { alignItems: 'center', width: 52, marginRight: 12 },
-  rank: { fontSize: 28, fontWeight: '900', color: '#CCC', lineHeight: 32 },
-  rankFirst: { color: BLUE },
-
-  center: { flex: 1 },
-  dest: { fontSize: 16, fontWeight: '700', color: '#111', marginBottom: 2 },
-  trainName: { fontSize: 12, color: '#888', marginBottom: 8 },
-
-  timeRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  timeBlock: { alignItems: 'flex-start' },
-  timeLabel: { fontSize: 10, color: '#999', textTransform: 'uppercase', letterSpacing: 0.4 },
-  timeVal: { fontSize: 16, fontWeight: '700', color: '#111' },
-  delayed: { color: RED },
-  plannedTime: { fontSize: 11, color: '#999', textDecorationLine: 'line-through' },
-  arrow: { fontSize: 16, color: '#CCC', paddingHorizontal: 2 },
-
-  right: { alignItems: 'center', gap: 8, marginLeft: 10 },
-
-  trackBadge: {
-    backgroundColor: '#F0F0F0',
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+  // Perron — links
+  perron: {
+    backgroundColor: BLUE,
+    borderRadius: 12,
+    width: 64,
+    paddingVertical: 10,
     alignItems: 'center',
-    minWidth: 56,
+    marginRight: 14,
   },
-  trackBadgeFirst: { backgroundColor: BLUE },
-  trackLabel: { fontSize: 9, color: '#888', textTransform: 'uppercase', letterSpacing: 0.4, fontWeight: '600' },
-  trackLabelFirst: { color: GOLD },
-  trackNum: { fontSize: 22, fontWeight: '900', color: '#333', lineHeight: 26 },
-  trackNumFirst: { color: '#FFF' },
+  perronLabel: { fontSize: 9, color: GOLD, textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: '700' },
+  perronNum:   { fontSize: 34, fontWeight: '900', color: '#FFF', lineHeight: 40 },
 
-  transferBadge: { alignItems: 'center' },
-  transferNum: { fontSize: 18, fontWeight: '800', color: BLUE, lineHeight: 22 },
-  transferLabel: { fontSize: 9, color: '#888', textTransform: 'uppercase', letterSpacing: 0.3 },
+  // Midden
+  center:    { flex: 1 },
+  dest:      { fontSize: 16, fontWeight: '700', color: '#111', marginBottom: 4 },
+  timeRow:   { flexDirection: 'row', alignItems: 'baseline', flexWrap: 'wrap' },
+  timeVal:   { fontSize: 15, fontWeight: '700', color: '#111' },
+  delayed:   { color: RED },
+  planned:   { fontSize: 11, color: '#999', textDecorationLine: 'line-through', marginLeft: 4 },
+  arrow:     { fontSize: 14, color: '#BBB' },
+  transfers: { fontSize: 12, color: '#888', marginTop: 4 },
+
+  // Timer — rechts
+  timerWrap: { marginLeft: 12, alignItems: 'flex-end' },
 });
 
 export default function App() {
@@ -432,7 +386,7 @@ export default function App() {
         <ScrollView style={s.list} contentContainerStyle={{ paddingBottom: 20 }}>
           <Text style={s.listHdr}>Top {departures.length} snelste treinen</Text>
           {departures.map((dep, i) => (
-            <TrainCard key={i} dep={dep} rank={i + 1} />
+            <TrainCard key={i} dep={dep} />
           ))}
         </ScrollView>
       )}
