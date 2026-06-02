@@ -365,6 +365,14 @@ export default function App() {
         return;
       }
 
+      if (stationCode === toCode) {
+        setTrips([]);
+        setRefreshed(new Date());
+        setLoading(false);
+        setApiError('Je bent al op je bestemming! Kies een ander thuisstation.');
+        return;
+      }
+
       const dateTime = encodeURIComponent(new Date().toISOString());
       const res = await fetch(
         `/api/trips?fromStation=${stationCode}&toStation=${toCode}&dateTime=${dateTime}&searchForArrival=false&travelClass=2&maxTransfers=1&numJourneys=10`
@@ -372,13 +380,14 @@ export default function App() {
       if (!res.ok) {
         if (res.status === 401)
           throw new Error('Ongeldige API key');
+        if (res.status === 400)
+          throw new Error('Ongeldig station of bestemming — kies een ander thuisstation.');
         throw new Error(`NS API fout ${res.status}`);
       }
       const data = await res.json();
       const parsed: Trip[] = (data.trips ?? [])
         .map(parseTrip)
-        .filter(Boolean)
-        .slice(0, 5) as Trip[];
+        .filter(Boolean) as Trip[];
 
       setTrips(parsed);
       setRefreshed(new Date());
@@ -455,7 +464,8 @@ export default function App() {
   const upcoming = [...trips].filter(t => secsUntil(t.departureTime) > 0);
   // Always show at least 3; cap at 59 min only if we have >= 3 within that window
   const within59 = upcoming.filter(t => secsUntil(t.departureTime) <= MAX_MINS * 60);
-  const tripsToShow = within59.length >= 3 ? within59 : upcoming.slice(0, Math.max(3, within59.length));
+  // Always show min 3; use 59-min cap only when >=3 trains fit within it
+  const tripsToShow = within59.length >= 3 ? within59.slice(0, 5) : upcoming.slice(0, 5);
   const sortedTrips = tripsToShow.sort((a, b) => {
     if (sortSnelst && sortGemak) {
       // Snelst+Gemak: minste overstappen eerst, dan vroegste aankomst
@@ -572,7 +582,7 @@ export default function App() {
       )}
 
       {/* Top 5 list */}
-      {trips.length > 0 && (
+      {sortedTrips.length > 0 && (
         <ScrollView style={s.list} contentContainerStyle={{ paddingBottom: 20 }}>
           {/* Header row met sorteerknoppen */}
           <View style={s.listHdrRow}>
@@ -606,7 +616,7 @@ export default function App() {
       )}
 
       {/* Empty */}
-      {!loading && !apiError && !locError && trips.length === 0 && station && (
+      {!loading && !apiError && !locError && sortedTrips.length === 0 && station && (
         <View style={s.empty}>
           <Text style={s.emptyTxt}>Geen reizen naar {destination.label} gevonden.</Text>
         </View>
