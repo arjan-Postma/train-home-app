@@ -18,7 +18,45 @@ const NS_API_KEY = '7383917274334e0dad1099b05e091088';
 // Zet op true om mock-data te zien zonder API key of locatie
 const DEMO_MODE = false;
 
-const DESTINATION_LABEL = 'Rotterdam Centraal';
+const DESTINATIONS = [
+  { code: 'RTD',  label: 'Rotterdam Centraal' },
+  { code: 'ASD',  label: 'Amsterdam Amstel' },
+  { code: 'ACA',  label: 'Amsterdam Centraal' },
+  { code: 'NASM', label: 'Amsterdam Zuid' },
+  { code: 'ASP',  label: 'Amsterdam Bijlmer ArenA' },
+  { code: 'UT',   label: 'Utrecht Centraal' },
+  { code: 'DH',   label: 'Den Haag Centraal' },
+  { code: 'SCHP', label: 'Schiphol Airport' },
+  { code: 'ES',   label: 'Eindhoven' },
+  { code: 'AMF',  label: 'Amersfoort Centraal' },
+  { code: 'ZL',   label: 'Zwolle' },
+  { code: 'LW',   label: 'Lelystad Centrum' },
+  { code: 'HVS',  label: 'Hilversum' },
+  { code: 'ALM',  label: 'Almere Centrum' },
+  { code: 'DV',   label: 'Deventer' },
+  { code: 'GN',   label: 'Groningen' },
+  { code: 'LLS',  label: 'Leeuwarden' },
+  { code: 'NM',   label: 'Nijmegen' },
+  { code: 'HT',   label: 'Den Bosch' },
+  { code: 'MTR',  label: 'Maastricht' },
+];
+
+const STORAGE_KEY = 'train_home_destination';
+
+function loadDestination() {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) {
+      const dest = DESTINATIONS.find(d => d.code === saved);
+      if (dest) return dest;
+    }
+  } catch {}
+  return DESTINATIONS[0];
+}
+
+function saveDestination(code: string) {
+  try { localStorage.setItem(STORAGE_KEY, code); } catch {}
+}
 
 // ── Stations met coördinaten voor dichtstbijzijnde-berekening ──
 const STATIONS = [
@@ -207,6 +245,7 @@ const card = StyleSheet.create({
 
 export default function App() {
   const [station, setStation] = useState<typeof STATIONS[0] | null>(null);
+  const [destination, setDestinationState] = useState(() => loadDestination());
   const [trips, setTrips] = useState<Trip[]>([]);
   const [sortSnelst, setSortSnelst] = useState(false);
   const [sortGemak, setSortGemak] = useState(false);
@@ -216,7 +255,18 @@ export default function App() {
   const [refreshed, setRefreshed] = useState<Date | null>(null);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const fetchDeps = useCallback(async (code: string) => {
+  function handleDestinationChange(code: string) {
+    const dest = DESTINATIONS.find(d => d.code === code) ?? DESTINATIONS[0];
+    setDestinationState(dest);
+    saveDestination(code);
+    if (station) fetchDeps(station.code, code);
+  }
+
+  const destinationRef = React.useRef(destination);
+  destinationRef.current = destination;
+
+  const fetchDeps = useCallback(async (stationCode: string, destCode?: string) => {
+    const toCode = destCode ?? destinationRef.current.code;
     setLoading(true);
     setApiError(null);
     try {
@@ -238,7 +288,7 @@ export default function App() {
 
       const dateTime = encodeURIComponent(new Date().toISOString());
       const res = await fetch(
-        `/api/trips?fromStation=${code}&toStation=RTD&dateTime=${dateTime}&searchForArrival=false&travelClass=2&maxTransfers=1`
+        `/api/trips?fromStation=${stationCode}&toStation=${toCode}&dateTime=${dateTime}&searchForArrival=false&travelClass=2&maxTransfers=1`
       );
       if (!res.ok) {
         if (res.status === 401)
@@ -323,14 +373,40 @@ export default function App() {
       {/* Header */}
       <View style={s.header}>
         <Text style={s.headerTitle}>Snelste trein naar huis</Text>
-        <Text style={s.headerDest}>→ {DESTINATION_LABEL}</Text>
+        <Text style={s.headerDest}>→ {destination.label}</Text>
       </View>
 
       {/* Station */}
       {station && (
         <View style={s.stationBar}>
-          <Text style={s.stationMeta}>Vertrekstation</Text>
-          <Text style={s.stationName}>{station.name}</Text>
+          <View style={s.stationCol}>
+            <Text style={s.stationMeta}>Vertrekstation</Text>
+            <Text style={s.stationName}>{station.name}</Text>
+          </View>
+          <View style={s.destCol}>
+            <Text style={s.stationMeta}>Bestemming</Text>
+            {Platform.OS === 'web'
+              ? (React.createElement as any)('select', {
+                  value: destination.code,
+                  onChange: (e: any) => handleDestinationChange(e.target.value),
+                  style: {
+                    fontSize: 15, fontWeight: '700', color: '#111',
+                    background: 'transparent', border: 'none', outline: 'none',
+                    padding: 0, cursor: 'pointer', fontFamily: 'inherit',
+                    appearance: 'none', WebkitAppearance: 'none',
+                  },
+                },
+                ...DESTINATIONS.map(d =>
+                  (React.createElement as any)('option', { key: d.code, value: d.code }, d.label)
+                )
+              )
+              : (
+                <TouchableOpacity onPress={() => {/* native picker TBD */}}>
+                  <Text style={s.stationName}>{destination.label} ▾</Text>
+                </TouchableOpacity>
+              )
+            }
+          </View>
         </View>
       )}
 
@@ -393,7 +469,7 @@ export default function App() {
             if (sortGemak)  return a.transfers !== b.transfers ? a.transfers - b.transfers : new Date(a.departureTime).getTime() - new Date(b.departureTime).getTime();
             return new Date(a.departureTime).getTime() - new Date(b.departureTime).getTime();
           }).map((trip, i) => (
-            <TrainCard key={i} trip={trip} dest={DESTINATION_LABEL} />
+            <TrainCard key={i} trip={trip} dest={destination.label} />
           ))}
         </ScrollView>
       )}
@@ -401,7 +477,7 @@ export default function App() {
       {/* Empty */}
       {!loading && !apiError && !locError && trips.length === 0 && station && (
         <View style={s.empty}>
-          <Text style={s.emptyTxt}>Geen reizen naar {DESTINATION_LABEL} gevonden.</Text>
+          <Text style={s.emptyTxt}>Geen reizen naar {destination.label} gevonden.</Text>
         </View>
       )}
 
@@ -441,9 +517,13 @@ const s = StyleSheet.create({
     paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: '#E8E8E8',
+    flexDirection: 'row',
+    gap: 16,
   },
+  stationCol: { flex: 1 },
+  destCol:    { flex: 1 },
   stationMeta: { fontSize: 11, color: '#888', textTransform: 'uppercase', letterSpacing: 0.6 },
-  stationName: { fontSize: 20, fontWeight: '700', color: '#111', marginTop: 2 },
+  stationName: { fontSize: 17, fontWeight: '700', color: '#111', marginTop: 2 },
 
   errBox: {
     margin: 16,
