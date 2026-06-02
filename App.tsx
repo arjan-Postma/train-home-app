@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   SafeAreaView,
   Platform,
+  useWindowDimensions,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import * as Location from 'expo-location';
@@ -140,67 +141,128 @@ function parseTrip(t: any): Trip | null {
   };
 }
 
-function Countdown({ iso }: { iso: string }) {
+const BLUE = '#003082';
+const GOLD = '#FFD700';
+const RED  = '#FE0437';
+
+const WALK_SPEED = 1.4; // m/s normal walking pace
+
+// Returns a color between green→orange→red based on whether you can make the train
+function catchColor(secsLeft: number, distMeters: number | null): string {
+  if (distMeters === null || secsLeft <= 0) return '#999';
+  const walkSecs = distMeters / WALK_SPEED;
+  const ratio = secsLeft / walkSecs; // >1 means enough time
+  if (ratio >= 2.0) return '#22C55E';   // green — comfortably on time
+  if (ratio >= 1.4) return '#84CC16';   // yellow-green
+  if (ratio >= 1.0) return '#F97316';   // orange — just make it
+  return '#EF4444';                      // red — too late
+}
+
+function Countdown({ iso, distMeters, inverse }: { iso: string; distMeters: number | null; inverse?: boolean }) {
   const [s, setS] = useState(() => secsUntil(iso));
   useEffect(() => {
     const id = setInterval(() => setS(secsUntil(iso)), 1000);
     return () => clearInterval(id);
   }, [iso]);
 
-  if (s <= 0) return <Text style={cd.gone}>Vertrokken</Text>;
+  const textColor = inverse ? '#FFF' : '#003082';
+  const urgentColor = inverse ? '#FFD700' : '#FE0437';
+
+  if (s <= 0) return <Text style={[cd.gone, inverse && { color: 'rgba(255,255,255,0.5)' }]}>Vertrokken</Text>;
   const m = Math.floor(s / 60);
   const sec = s % 60;
+  const dot = catchColor(s, distMeters);
   return (
-    <Text style={[cd.text, m < 3 && cd.urgent]}>
-      {m > 0 ? `${m}m ${String(sec).padStart(2, '0')}s` : `${s}s`}
-    </Text>
+    <View style={{ alignItems: 'flex-end' }}>
+      <Text style={[cd.text, { color: m < 3 ? urgentColor : textColor }]}>
+        {m > 0 ? `${m}m ${String(sec).padStart(2, '0')}s` : `${s}s`}
+      </Text>
+      <View style={[cd.dot, { backgroundColor: dot }]} />
+    </View>
   );
 }
 
 const cd = StyleSheet.create({
-  text:   { color: '#003082', fontSize: 22, fontWeight: '900', textAlign: 'right' },
-  urgent: { color: '#FE0437' },
-  gone:   { color: '#999', fontSize: 14, fontWeight: '600' },
+  text: { fontSize: 22, fontWeight: '900', textAlign: 'right' },
+  gone: { color: '#999', fontSize: 14, fontWeight: '600' },
+  dot:  { width: 10, height: 10, borderRadius: 5, marginTop: 4, alignSelf: 'flex-end' },
 });
 
-// Single train card: [Perron groot] [Bestemming + tijden + overstappen] [Afteltimer groot]
-function TrainCard({ trip, dest }: { trip: Trip; dest: string }) {
+function TrainCard({ trip, dest, selected, onPress, distMeters }: {
+  trip: Trip; dest: string; selected: boolean;
+  onPress: () => void; distMeters: number | null;
+}) {
+  const delayed = trip.departureTime !== trip.plannedDepartureTime;
+  const inv = selected;
+  return (
+    <TouchableOpacity onPress={onPress} activeOpacity={0.85}>
+      <View style={[card.wrap, inv && card.wrapInv]}>
+        <View style={[card.perron, inv && card.perronInv]}>
+          <Text style={[card.perronLabel, inv && { color: BLUE }]}>Perron</Text>
+          <Text style={[card.perronNum, inv && { color: BLUE }]}>{trip.track}</Text>
+        </View>
+        <View style={card.center}>
+          <Text style={[card.dest, inv && { color: '#FFF' }]}>{dest}</Text>
+          <View style={card.timeRow}>
+            <Text style={[card.timeVal, delayed && card.delayed, inv && !delayed && { color: 'rgba(255,255,255,0.9)' }]}>{hhmm(trip.departureTime)}</Text>
+            {delayed && <Text style={[card.planned, inv && { color: 'rgba(255,255,255,0.5)' }]}>{hhmm(trip.plannedDepartureTime)}</Text>}
+            <Text style={[card.arrow, inv && { color: 'rgba(255,255,255,0.4)' }]}> → </Text>
+            <Text style={[card.timeVal, inv && { color: 'rgba(255,255,255,0.9)' }]}>{hhmm(trip.arrivalTime)}</Text>
+          </View>
+          <Text style={[card.transfers, inv && { color: 'rgba(255,255,255,0.6)' }]}>
+            {trip.transfers === 0 ? `Direct · ${trip.trainName}` : trip.transfers === 1 ? `1 overstap · ${trip.trainName}` : `${trip.transfers} overstappen · ${trip.trainName}`}
+          </Text>
+        </View>
+        <View style={card.timerWrap}>
+          <Countdown iso={trip.departureTime} distMeters={distMeters} inverse={inv} />
+        </View>
+      </View>
+    </TouchableOpacity>
+  );
+}
+
+// Fullscreen landscape view for selected trip
+function LandscapeView({ trip, dest, distMeters }: { trip: Trip; dest: string; distMeters: number | null }) {
   const delayed = trip.departureTime !== trip.plannedDepartureTime;
   return (
-    <View style={card.wrap}>
-      {/* Perron — groot links */}
-      <View style={card.perron}>
-        <Text style={card.perronLabel}>Perron</Text>
-        <Text style={card.perronNum}>{trip.track}</Text>
+    <View style={ls.wrap}>
+      <View style={ls.perronBlock}>
+        <Text style={ls.perronLabel}>Perron</Text>
+        <Text style={ls.perronNum}>{trip.track}</Text>
       </View>
-
-      {/* Midden */}
-      <View style={card.center}>
-        <Text style={card.dest}>{dest}</Text>
-        <View style={card.timeRow}>
-          <Text style={[card.timeVal, delayed && card.delayed]}>{hhmm(trip.departureTime)}</Text>
-          {delayed && <Text style={card.planned}>{hhmm(trip.plannedDepartureTime)}</Text>}
-          <Text style={card.arrow}> → </Text>
-          <Text style={card.timeVal}>{hhmm(trip.arrivalTime)}</Text>
+      <View style={ls.main}>
+        <Text style={ls.dest}>{dest}</Text>
+        <View style={ls.timeRow}>
+          <Text style={[ls.time, delayed && { color: '#FFD700' }]}>{hhmm(trip.departureTime)}</Text>
+          {delayed && <Text style={ls.planned}>{hhmm(trip.plannedDepartureTime)}</Text>}
+          <Text style={ls.arrow}> → </Text>
+          <Text style={ls.time}>{hhmm(trip.arrivalTime)}</Text>
         </View>
-        <Text style={card.transfers}>
-          {trip.transfers === 0
-            ? `Direct · ${trip.trainName}`
-            : trip.transfers === 1 ? `1 overstap · ${trip.trainName}` : `${trip.transfers} overstappen · ${trip.trainName}`}
+        <Text style={ls.transfers}>
+          {trip.transfers === 0 ? `Direct · ${trip.trainName}` : `${trip.transfers} overstap · ${trip.trainName}`}
         </Text>
       </View>
-
-      {/* Afteltimer — groot rechts */}
-      <View style={card.timerWrap}>
-        <Countdown iso={trip.departureTime} />
+      <View style={ls.timerBlock}>
+        <Countdown iso={trip.departureTime} distMeters={distMeters} inverse />
       </View>
     </View>
   );
 }
 
-const BLUE = '#003082';
-const GOLD = '#FFD700';
-const RED  = '#FE0437';
+const ls = StyleSheet.create({
+  wrap:        { flex: 1, backgroundColor: BLUE, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 40, paddingVertical: 20 },
+  perronBlock: { backgroundColor: GOLD, borderRadius: 16, paddingHorizontal: 24, paddingVertical: 16, alignItems: 'center', marginRight: 40 },
+  perronLabel: { fontSize: 11, color: BLUE, textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: '800' },
+  perronNum:   { fontSize: 64, fontWeight: '900', color: BLUE, lineHeight: 72 },
+  main:        { flex: 1 },
+  dest:        { color: '#FFF', fontSize: 28, fontWeight: '800', marginBottom: 8 },
+  timeRow:     { flexDirection: 'row', alignItems: 'baseline', marginBottom: 8 },
+  time:        { color: '#FFF', fontSize: 42, fontWeight: '900' },
+  planned:     { color: 'rgba(255,255,255,0.5)', fontSize: 18, textDecorationLine: 'line-through', marginLeft: 8 },
+  arrow:       { color: 'rgba(255,255,255,0.4)', fontSize: 28 },
+  transfers:   { color: 'rgba(255,255,255,0.65)', fontSize: 16 },
+  timerBlock:  { alignItems: 'flex-end', minWidth: 130 },
+});
 
 const card = StyleSheet.create({
   wrap: {
@@ -216,6 +278,7 @@ const card = StyleSheet.create({
     shadowRadius: 6,
     elevation: 2,
   },
+  wrapInv: { backgroundColor: BLUE },
 
   // Perron — links
   perron: {
@@ -226,6 +289,7 @@ const card = StyleSheet.create({
     alignItems: 'center',
     marginRight: 14,
   },
+  perronInv:   { backgroundColor: GOLD },
   perronLabel: { fontSize: 9, color: GOLD, textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: '700' },
   perronNum:   { fontSize: 34, fontWeight: '900', color: '#FFF', lineHeight: 40 },
 
@@ -244,10 +308,14 @@ const card = StyleSheet.create({
 });
 
 export default function App() {
+  const { width, height } = useWindowDimensions();
+  const isLandscape = width > height;
+
   const [station, setStation] = useState<typeof STATIONS[0] | null>(null);
   const [stationDist, setStationDist] = useState<number | null>(null);
   const [destination, setDestinationState] = useState(() => loadDestination());
   const [trips, setTrips] = useState<Trip[]>([]);
+  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [sortSnelst, setSortSnelst] = useState(false);
   const [sortGemak, setSortGemak] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -373,6 +441,29 @@ export default function App() {
     return () => { if (timer.current) clearInterval(timer.current); };
   }, [station?.code]);
 
+  const sortedTrips = [...trips].sort((a, b) => {
+    if (sortSnelst && sortGemak) {
+      if (a.transfers !== b.transfers) return a.transfers - b.transfers;
+      return new Date(a.arrivalTime).getTime() - new Date(b.arrivalTime).getTime();
+    }
+    if (sortSnelst) return new Date(a.arrivalTime).getTime() - new Date(b.arrivalTime).getTime();
+    if (sortGemak)  return a.transfers !== b.transfers ? a.transfers - b.transfers : new Date(a.departureTime).getTime() - new Date(b.departureTime).getTime();
+    return new Date(a.departureTime).getTime() - new Date(b.departureTime).getTime();
+  });
+
+  const selectedTrip = selectedIndex !== null ? sortedTrips[selectedIndex] ?? null : null;
+
+  // Landscape: fullscreen selected trip (or first available)
+  if (isLandscape && sortedTrips.length > 0) {
+    const trip = selectedTrip ?? sortedTrips[0];
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: BLUE }}>
+        <StatusBar style="light" />
+        <LandscapeView trip={trip} dest={destination.label} distMeters={stationDist} />
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={s.safe}>
       <StatusBar style="light" />
@@ -475,17 +566,15 @@ export default function App() {
               </TouchableOpacity>
             </View>
           </View>
-          {[...trips].sort((a, b) => {
-            if (sortSnelst && sortGemak) {
-              // Minste overstappen eerst, dan vroegste aankomst
-              if (a.transfers !== b.transfers) return a.transfers - b.transfers;
-              return new Date(a.arrivalTime).getTime() - new Date(b.arrivalTime).getTime();
-            }
-            if (sortSnelst) return new Date(a.arrivalTime).getTime() - new Date(b.arrivalTime).getTime();
-            if (sortGemak)  return a.transfers !== b.transfers ? a.transfers - b.transfers : new Date(a.departureTime).getTime() - new Date(b.departureTime).getTime();
-            return new Date(a.departureTime).getTime() - new Date(b.departureTime).getTime();
-          }).map((trip, i) => (
-            <TrainCard key={i} trip={trip} dest={destination.label} />
+          {sortedTrips.map((trip, i) => (
+            <TrainCard
+              key={i}
+              trip={trip}
+              dest={destination.label}
+              selected={selectedIndex === i}
+              distMeters={stationDist}
+              onPress={() => setSelectedIndex(prev => prev === i ? null : i)}
+            />
           ))}
         </ScrollView>
       )}
