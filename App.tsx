@@ -390,9 +390,10 @@ export default function App() {
                   value: destination.code,
                   onChange: (e: any) => handleDestinationChange(e.target.value),
                   style: {
-                    fontSize: 15, fontWeight: '700', color: '#111',
+                    fontSize: 17, fontWeight: '700', color: '#111',
                     background: 'transparent', border: 'none', outline: 'none',
-                    padding: 0, cursor: 'pointer', fontFamily: 'inherit',
+                    padding: 0, marginTop: 2, cursor: 'pointer', width: '100%',
+                    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif',
                     appearance: 'none', WebkitAppearance: 'none',
                   },
                 },
