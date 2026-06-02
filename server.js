@@ -31,11 +31,19 @@ http.createServer((req, res) => {
       },
     };
     https.get(nsUrl, options, (nsRes) => {
-      console.log('NS API status:', nsRes.statusCode);
+      console.log('NS API status:', nsRes.statusCode, '| query:', qs);
       let body = '';
       nsRes.on('data', d => body += d);
       nsRes.on('end', () => {
-        if (nsRes.statusCode !== 200) console.log('NS API body:', body);
+        if (nsRes.statusCode !== 200) {
+          console.log('NS API error body:', body);
+        } else {
+          try {
+            const parsed = JSON.parse(body);
+            const deps = parsed.payload?.departures ?? [];
+            console.log(`NS API returned ${deps.length} departures, directions:`, [...new Set(deps.map(d => d.direction))].join(', '));
+          } catch(e) {}
+        }
         res.setHeader('Content-Type', 'application/json');
         res.statusCode = nsRes.statusCode;
         res.end(body);
