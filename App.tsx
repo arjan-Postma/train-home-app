@@ -505,13 +505,12 @@ export default function App() {
     return new Date(a.departureTime).getTime() - new Date(b.departureTime).getTime();
   });
 
-  // "Haal ik" filter: keep greens (all) + max 2 oranges, remove reds
-  const visibleTrips = filterHaalIk ? (() => {
-    const secsNow = (iso: string) => secsUntil(iso);
-    const colored = visibleTrips.map(t => ({ t, color: catchColor(secsNow(t.departureTime), stationDist) }));
-    const greens   = colored.filter(x => x.color === '#22C55E' || x.color === '#84CC16').map(x => x.t);
-    const oranges  = colored.filter(x => x.color === '#F97316').map(x => x.t).slice(0, 2);
-    // Merge in original sort order
+  // "Haal ik" filter: keep greens + max 2 oranges, remove reds
+  // If stationDist unknown, disable filter (can't calculate catchability)
+  const visibleTrips = (filterHaalIk && stationDist !== null) ? (() => {
+    const colored = sortedTrips.map(t => ({ t, color: catchColor(secsUntil(t.departureTime), stationDist) }));
+    const greens  = colored.filter(x => x.color === '#22C55E' || x.color === '#84CC16').map(x => x.t);
+    const oranges = colored.filter(x => x.color === '#F97316').map(x => x.t).slice(0, 2);
     const kept = new Set([...greens, ...oranges]);
     return sortedTrips.filter(t => kept.has(t));
   })() : sortedTrips;
@@ -633,7 +632,10 @@ export default function App() {
                 style={[s.sortBtn, filterHaalIk && s.sortBtnHaalIk]}
                 onPress={() => setFilterHaalIk(v => !v)}
               >
-                <Text style={[s.sortBtnTxt, filterHaalIk && s.sortBtnTxtOn]}>Haal ik 🟢</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                  <Text style={[s.sortBtnTxt, filterHaalIk && s.sortBtnTxtOn]}>Haal ik</Text>
+                  <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: filterHaalIk ? '#FFF' : '#22C55E' }} />
+                </View>
               </TouchableOpacity>
             </View>
           </View>
