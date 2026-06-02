@@ -46,10 +46,19 @@ http.createServer((req, res) => {
     return;
   }
 
-  // Static files
-  let filePath = path.join(DIST, req.url === '/' ? 'index.html' : req.url);
-  if (!fs.existsSync(filePath)) filePath = path.join(DIST, 'index.html');
+  // Static files — only fall back to index.html for navigation requests, not assets
+  const urlPath = req.url.split('?')[0];
+  let filePath = path.join(DIST, urlPath === '/' ? 'index.html' : urlPath);
   const ext = path.extname(filePath);
+  if (!fs.existsSync(filePath)) {
+    // Asset (js/css/ico) that doesn't exist → 404, not a silent HTML fallback
+    if (ext && ext !== '.html') {
+      res.statusCode = 404;
+      res.end('Not found');
+      return;
+    }
+    filePath = path.join(DIST, 'index.html');
+  }
   res.setHeader('Content-Type', MIME[ext] || 'application/octet-stream');
   fs.createReadStream(filePath).pipe(res);
 
