@@ -285,8 +285,7 @@ export default function App() {
         return;
       }
       const res = await fetch(
-        `https://gateway.apiportal.ns.nl/reisinformatie-api/api/v2/departures?station=${code}&maxJourneys=40`,
-        { headers: { 'Ocp-Apim-Subscription-Key': NS_API_KEY } }
+        `/api/departures?station=${code}&maxJourneys=40`
       );
       if (!res.ok) {
         if (res.status === 401)
