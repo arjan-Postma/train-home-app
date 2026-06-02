@@ -145,6 +145,16 @@ const BLUE = '#003082';
 const GOLD = '#FFD700';
 const RED  = '#FE0437';
 
+// Lower = better quality (IC=1, mix=2, Sprinter=3)
+function trainQuality(trainName: string): number {
+  const n = trainName.toLowerCase();
+  const hasIC = n.includes('intercity') || n.includes(' ic');
+  const hasSprinter = n.includes('sprinter');
+  if (hasIC && !hasSprinter) return 1;
+  if (hasIC && hasSprinter) return 2;
+  return 3;
+}
+
 const WALK_SPEED = 1.4; // m/s normal walking pace
 
 // Returns a color between green→orange→red based on whether you can make the train
@@ -443,11 +453,22 @@ export default function App() {
 
   const sortedTrips = [...trips].filter(t => secsUntil(t.departureTime) > 0).sort((a, b) => {
     if (sortSnelst && sortGemak) {
+      // Snelst+Gemak: minste overstappen eerst, dan vroegste aankomst
       if (a.transfers !== b.transfers) return a.transfers - b.transfers;
       return new Date(a.arrivalTime).getTime() - new Date(b.arrivalTime).getTime();
     }
-    if (sortSnelst) return new Date(a.arrivalTime).getTime() - new Date(b.arrivalTime).getTime();
-    if (sortGemak)  return a.transfers !== b.transfers ? a.transfers - b.transfers : new Date(a.departureTime).getTime() - new Date(b.departureTime).getTime();
+    if (sortSnelst) {
+      // Vroegste aankomst
+      return new Date(a.arrivalTime).getTime() - new Date(b.arrivalTime).getTime();
+    }
+    if (sortGemak) {
+      // Minste overstappen, dan treintype (IC > Sprinter), dan vertrektijd
+      if (a.transfers !== b.transfers) return a.transfers - b.transfers;
+      const qa = trainQuality(a.trainName), qb = trainQuality(b.trainName);
+      if (qa !== qb) return qa - qb;
+      return new Date(a.departureTime).getTime() - new Date(b.departureTime).getTime();
+    }
+    // Standaard: vertrektijd
     return new Date(a.departureTime).getTime() - new Date(b.departureTime).getTime();
   });
 
