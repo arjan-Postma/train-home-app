@@ -46,6 +46,13 @@ http.createServer((req, res) => {
     return;
   }
 
+  // Serve app icon directly from assets/ (survives nixpacks dist rebuild)
+  if (req.url === '/icon.png') {
+    res.setHeader('Content-Type', 'image/png');
+    fs.createReadStream(path.join(__dirname, 'assets', 'icon.png')).pipe(res);
+    return;
+  }
+
   // Static files — only fall back to index.html for navigation requests, not assets
   const urlPath = req.url.split('?')[0];
   let filePath = path.join(DIST, urlPath === '/' ? 'index.html' : urlPath);
@@ -63,7 +70,7 @@ http.createServer((req, res) => {
   if (ext === '.html' || filePath.endsWith('index.html')) {
     let html = fs.readFileSync(filePath, 'utf8');
     if (!html.includes('apple-touch-icon')) {
-      html = html.replace('</head>', '<link rel="apple-touch-icon" sizes="180x180" href="/assets/icon.png"><meta name="apple-mobile-web-app-title" content="Trein thuis"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"></head>');
+      html = html.replace('</head>', '<link rel="apple-touch-icon" sizes="180x180" href="/icon.png"><meta name="apple-mobile-web-app-title" content="Trein thuis"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"></head>');
     }
     res.setHeader('Content-Type', 'text/html');
     res.end(html);

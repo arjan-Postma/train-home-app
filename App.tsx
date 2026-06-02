@@ -367,7 +367,7 @@ export default function App() {
 
       const dateTime = encodeURIComponent(new Date().toISOString());
       const res = await fetch(
-        `/api/trips?fromStation=${stationCode}&toStation=${toCode}&dateTime=${dateTime}&searchForArrival=false&travelClass=2&maxTransfers=1`
+        `/api/trips?fromStation=${stationCode}&toStation=${toCode}&dateTime=${dateTime}&searchForArrival=false&travelClass=2&maxTransfers=1&numJourneys=10`
       );
       if (!res.ok) {
         if (res.status === 401)
@@ -451,7 +451,12 @@ export default function App() {
     return () => { if (timer.current) clearInterval(timer.current); };
   }, [station?.code]);
 
-  const sortedTrips = [...trips].filter(t => secsUntil(t.departureTime) > 0).sort((a, b) => {
+  const MAX_MINS = 59;
+  const upcoming = [...trips].filter(t => secsUntil(t.departureTime) > 0);
+  // Always show at least 3; cap at 59 min only if we have >= 3 within that window
+  const within59 = upcoming.filter(t => secsUntil(t.departureTime) <= MAX_MINS * 60);
+  const tripsToShow = within59.length >= 3 ? within59 : upcoming.slice(0, Math.max(3, within59.length));
+  const sortedTrips = tripsToShow.sort((a, b) => {
     if (sortSnelst && sortGemak) {
       // Snelst+Gemak: minste overstappen eerst, dan vroegste aankomst
       if (a.transfers !== b.transfers) return a.transfers - b.transfers;
