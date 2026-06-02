@@ -245,6 +245,7 @@ const card = StyleSheet.create({
 
 export default function App() {
   const [station, setStation] = useState<typeof STATIONS[0] | null>(null);
+  const [stationDist, setStationDist] = useState<number | null>(null);
   const [destination, setDestinationState] = useState(() => loadDestination());
   const [trips, setTrips] = useState<Trip[]>([]);
   const [sortSnelst, setSortSnelst] = useState(false);
@@ -315,6 +316,7 @@ export default function App() {
     if (DEMO_MODE) {
       const s = STATIONS.find(st => st.code === 'HVS')!;
       setStation(s);
+      setStationDist(430);
       await fetchDeps(s.code);
       return;
     }
@@ -328,8 +330,11 @@ export default function App() {
       }
       navigator.geolocation.getCurrentPosition(
         async (pos) => {
-          const s = nearestStation(pos.coords.latitude, pos.coords.longitude);
+          const { latitude, longitude } = pos.coords;
+          const s = nearestStation(latitude, longitude);
+          const distKm = km(latitude, longitude, s.lat, s.lng);
           setStation(s);
+          setStationDist(Math.round(distKm * 1000));
           await fetchDeps(s.code);
         },
         (err) => {
@@ -350,7 +355,9 @@ export default function App() {
         accuracy: Location.Accuracy.Balanced,
       });
       const s = nearestStation(coords.latitude, coords.longitude);
+      const distKm = km(coords.latitude, coords.longitude, s.lat, s.lng);
       setStation(s);
+      setStationDist(Math.round(distKm * 1000));
       await fetchDeps(s.code);
     } catch (e: any) {
       setLocError('Kon locatie niet bepalen: ' + (e.message ?? 'onbekende fout'));
@@ -373,7 +380,6 @@ export default function App() {
       {/* Header */}
       <View style={s.header}>
         <Text style={s.headerTitle}>Snelste trein naar huis</Text>
-        <Text style={s.headerDest}>→ {destination.label}</Text>
       </View>
 
       {/* Station */}
@@ -381,10 +387,19 @@ export default function App() {
         <View style={s.stationBar}>
           <View style={s.stationCol}>
             <Text style={s.stationMeta}>Vertrekstation</Text>
-            <Text style={s.stationName}>{station.name}</Text>
+            <Text style={s.stationName}>
+              {station.name}
+              {stationDist !== null && (
+                <Text style={s.stationDist}>
+                  {'  '}{stationDist >= 1000
+                    ? `${(stationDist / 1000).toFixed(1)} km`
+                    : `${stationDist} m`}
+                </Text>
+              )}
+            </Text>
           </View>
           <View style={s.destCol}>
-            <Text style={s.stationMeta}>Bestemming</Text>
+            <Text style={s.stationMeta}>Thuis</Text>
             {Platform.OS === 'web'
               ? (React.createElement as any)('select', {
                   value: destination.code,
@@ -525,6 +540,7 @@ const s = StyleSheet.create({
   destCol:    { flex: 1 },
   stationMeta: { fontSize: 11, color: '#888', textTransform: 'uppercase', letterSpacing: 0.6 },
   stationName: { fontSize: 17, fontWeight: '700', color: '#111', marginTop: 2 },
+  stationDist: { fontSize: 13, fontWeight: '400', color: '#999' },
 
   errBox: {
     margin: 16,
