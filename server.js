@@ -59,6 +59,16 @@ http.createServer((req, res) => {
     }
     filePath = path.join(DIST, 'index.html');
   }
+  // Inject apple-touch-icon meta into HTML responses
+  if (ext === '.html' || filePath.endsWith('index.html')) {
+    let html = fs.readFileSync(filePath, 'utf8');
+    if (!html.includes('apple-touch-icon')) {
+      html = html.replace('</head>', '<link rel="apple-touch-icon" sizes="180x180" href="/assets/icon.png"><meta name="apple-mobile-web-app-title" content="Trein thuis"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"></head>');
+    }
+    res.setHeader('Content-Type', 'text/html');
+    res.end(html);
+    return;
+  }
   res.setHeader('Content-Type', MIME[ext] || 'application/octet-stream');
   fs.createReadStream(filePath).pipe(res);
 

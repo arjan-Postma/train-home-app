@@ -441,7 +441,7 @@ export default function App() {
     return () => { if (timer.current) clearInterval(timer.current); };
   }, [station?.code]);
 
-  const sortedTrips = [...trips].sort((a, b) => {
+  const sortedTrips = [...trips].filter(t => secsUntil(t.departureTime) > 0).sort((a, b) => {
     if (sortSnelst && sortGemak) {
       if (a.transfers !== b.transfers) return a.transfers - b.transfers;
       return new Date(a.arrivalTime).getTime() - new Date(b.arrivalTime).getTime();
