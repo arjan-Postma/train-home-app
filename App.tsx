@@ -50,25 +50,14 @@ const STATIONS = [
   { code: 'ES',   name: 'Eindhoven',                lat: 51.4440, lng: 5.4794 },
 ];
 
-interface RouteStation {
-  uicCode: string;
-  mediumName: string;
-  plannedArrivalDateTime?: string;
-  actualArrivalDateTime?: string;
-}
-
-interface Departure {
-  direction: string;
-  name: string;
-  plannedDateTime: string;
-  actualDateTime?: string;
-  plannedTrack?: string;
-  actualTrack?: string;
-  cancelled: boolean;
-  routeStations?: RouteStation[];
-  // resolved fields
-  arrivalTime?: string;
+interface Trip {
+  departureTime: string;        // actual departure from origin
+  plannedDepartureTime: string;
+  arrivalTime: string;          // actual arrival at destination
+  track: string;                // platform at origin
   transfers: number;
+  trainName: string;            // e.g. "Sprinter 5842"
+  cancelled: boolean;
 }
 
 function km(lat1: number, lng1: number, lat2: number, lng2: number) {
@@ -95,15 +84,22 @@ function secsUntil(iso: string) {
   return Math.round((new Date(iso).getTime() - Date.now()) / 1000);
 }
 
-// Find arrival time at destination from routeStations
-function findArrivalAtDest(routeStations?: RouteStation[]): string | undefined {
-  if (!routeStations) return undefined;
-  const stop = routeStations.find(
-    (r) =>
-      r.mediumName?.toLowerCase().includes('rotterdam') ||
-      r.uicCode === '8400561' // NS UIC code voor Rotterdam Centraal
-  );
-  return stop?.actualArrivalDateTime ?? stop?.plannedArrivalDateTime;
+// Parse raw NS trip into our Trip model
+function parseTrip(t: any): Trip | null {
+  const legs = t.legs;
+  if (!legs?.length) return null;
+  const firstLeg = legs[0];
+  const lastLeg  = legs[legs.length - 1];
+  if (t.status === 'CANCELLED') return null;
+  return {
+    plannedDepartureTime: firstLeg.origin.plannedDateTime,
+    departureTime:  firstLeg.origin.actualDateTime ?? firstLeg.origin.plannedDateTime,
+    arrivalTime:    lastLeg.destination.actualDateTime ?? lastLeg.destination.plannedDateTime,
+    track:          firstLeg.origin.actualTrack ?? firstLeg.origin.plannedTrack ?? '—',
+    transfers:      t.transfers ?? legs.length - 1,
+    trainName:      legs.map((l: any) => l.product?.shortCategoryName ?? '').filter(Boolean).join(' + '),
+    cancelled:      false,
+  };
 }
 
 function Countdown({ iso }: { iso: string }) {
@@ -129,37 +125,36 @@ const cd = StyleSheet.create({
   gone:   { color: '#999', fontSize: 14, fontWeight: '600' },
 });
 
-// Single train card: [Perron groot] [Station + tijden + overstappen] [Afteltimer groot]
-function TrainCard({ dep }: { dep: Departure }) {
-  const depTime = dep.actualDateTime ?? dep.plannedDateTime;
-  const track   = dep.actualTrack ?? dep.plannedTrack;
-  const delayed = dep.actualDateTime && dep.actualDateTime !== dep.plannedDateTime;
-
+// Single train card: [Perron groot] [Bestemming + tijden + overstappen] [Afteltimer groot]
+function TrainCard({ trip, dest }: { trip: Trip; dest: string }) {
+  const delayed = trip.departureTime !== trip.plannedDepartureTime;
   return (
     <View style={card.wrap}>
       {/* Perron — groot links */}
       <View style={card.perron}>
         <Text style={card.perronLabel}>Perron</Text>
-        <Text style={card.perronNum}>{track ?? '—'}</Text>
+        <Text style={card.perronNum}>{trip.track}</Text>
       </View>
 
-      {/* Midden: bestemming, tijden, overstappen */}
+      {/* Midden */}
       <View style={card.center}>
-        <Text style={card.dest}>{dep.direction}</Text>
+        <Text style={card.dest}>{dest}</Text>
         <View style={card.timeRow}>
-          <Text style={[card.timeVal, delayed && card.delayed]}>{hhmm(depTime)}</Text>
-          {delayed && <Text style={card.planned}>{hhmm(dep.plannedDateTime)}</Text>}
+          <Text style={[card.timeVal, delayed && card.delayed]}>{hhmm(trip.departureTime)}</Text>
+          {delayed && <Text style={card.planned}>{hhmm(trip.plannedDepartureTime)}</Text>}
           <Text style={card.arrow}> → </Text>
-          <Text style={card.timeVal}>{dep.arrivalTime ? hhmm(dep.arrivalTime) : '—'}</Text>
+          <Text style={card.timeVal}>{hhmm(trip.arrivalTime)}</Text>
         </View>
         <Text style={card.transfers}>
-          {dep.transfers === 0 ? 'Direct' : dep.transfers === 1 ? '1 overstap' : `${dep.transfers} overstappen`}
+          {trip.transfers === 0
+            ? `Direct · ${trip.trainName}`
+            : trip.transfers === 1 ? `1 overstap · ${trip.trainName}` : `${trip.transfers} overstappen · ${trip.trainName}`}
         </Text>
       </View>
 
       {/* Afteltimer — groot rechts */}
       <View style={card.timerWrap}>
-        <Countdown iso={depTime} />
+        <Countdown iso={trip.departureTime} />
       </View>
     </View>
   );
@@ -212,7 +207,7 @@ const card = StyleSheet.create({
 
 export default function App() {
   const [station, setStation] = useState<typeof STATIONS[0] | null>(null);
-  const [departures, setDepartures] = useState<Departure[]>([]);
+  const [trips, setTrips] = useState<Trip[]>([]);
   const [loading, setLoading] = useState(false);
   const [locError, setLocError] = useState<string | null>(null);
   const [apiError, setApiError] = useState<string | null>(null);
@@ -227,50 +222,34 @@ export default function App() {
         const now = new Date();
         const dt = (m: number) => new Date(now.getTime() + m * 60000).toISOString();
         await new Promise(r => setTimeout(r, 600));
-        setDepartures([
-          { direction: 'Amsterdam Amstel', name: 'Sprinter 5842', plannedDateTime: dt(4),  actualDateTime: dt(5),  plannedTrack: '3', actualTrack: '3', cancelled: false, transfers: 0, arrivalTime: dt(22) },
-          { direction: 'Amsterdam Amstel', name: 'Intercity 1234', plannedDateTime: dt(11), actualDateTime: dt(11), plannedTrack: '1', actualTrack: '1', cancelled: false, transfers: 0, arrivalTime: dt(28) },
-          { direction: 'Amsterdam Amstel', name: 'Sprinter 5844', plannedDateTime: dt(19), actualDateTime: dt(19), plannedTrack: '3', actualTrack: '3', cancelled: false, transfers: 0, arrivalTime: dt(36) },
-          { direction: 'Amsterdam Amstel', name: 'Intercity 1236', plannedDateTime: dt(29), actualDateTime: dt(31), plannedTrack: '2', actualTrack: '4', cancelled: false, transfers: 0, arrivalTime: dt(46) },
-          { direction: 'Amsterdam Amstel', name: 'Sprinter 5846', plannedDateTime: dt(39), actualDateTime: dt(39), plannedTrack: '3', actualTrack: '3', cancelled: false, transfers: 0, arrivalTime: dt(56) },
+        setTrips([
+          { plannedDepartureTime: dt(5),  departureTime: dt(6),  arrivalTime: dt(22), track: '3', transfers: 0, trainName: 'Sprinter',    cancelled: false },
+          { plannedDepartureTime: dt(11), departureTime: dt(11), arrivalTime: dt(45), track: '1', transfers: 1, trainName: 'IC + Sprinter', cancelled: false },
+          { plannedDepartureTime: dt(19), departureTime: dt(19), arrivalTime: dt(36), track: '3', transfers: 0, trainName: 'Sprinter',    cancelled: false },
+          { plannedDepartureTime: dt(29), departureTime: dt(31), arrivalTime: dt(63), track: '4', transfers: 1, trainName: 'Sprinter + IC', cancelled: false },
+          { plannedDepartureTime: dt(39), departureTime: dt(39), arrivalTime: dt(56), track: '3', transfers: 0, trainName: 'Intercity',   cancelled: false },
         ]);
         setRefreshed(new Date());
         setLoading(false);
         return;
       }
+
+      const dateTime = encodeURIComponent(new Date().toISOString());
       const res = await fetch(
-        `/api/departures?station=${code}&maxJourneys=40`
+        `/api/trips?fromStation=${code}&toStation=RTD&dateTime=${dateTime}&searchForArrival=false&travelClass=2&maxTransfers=1`
       );
       if (!res.ok) {
         if (res.status === 401)
-          throw new Error('Ongeldige API key — vul je NS key in bij NS_API_KEY in App.tsx');
+          throw new Error('Ongeldige API key');
         throw new Error(`NS API fout ${res.status}`);
       }
       const data = await res.json();
-      const all: any[] = (data.payload?.departures ?? []).filter((d: any) => !d.cancelled);
+      const parsed: Trip[] = (data.trips ?? [])
+        .map(parseTrip)
+        .filter(Boolean)
+        .slice(0, 5) as Trip[];
 
-      // Treinen naar Rotterdam Centraal (richting bevat "rotterdam")
-      let filtered = all.filter((d) =>
-        d.direction?.toLowerCase().includes('rotterdam')
-      );
-      // Fallback: alle overige richtingen
-      if (!filtered.length)
-        filtered = all.slice(0, 5);
-
-      const resolved: Departure[] = filtered.slice(0, 5).map((d) => ({
-        direction:         d.direction,
-        name:              d.name,
-        plannedDateTime:   d.plannedDateTime,
-        actualDateTime:    d.actualDateTime,
-        plannedTrack:      d.plannedTrack,
-        actualTrack:       d.actualTrack,
-        cancelled:         false,
-        routeStations:     d.routeStations,
-        arrivalTime:       findArrivalAtDest(d.routeStations),
-        transfers:         0, // direct train
-      }));
-
-      setDepartures(resolved);
+      setTrips(parsed);
       setRefreshed(new Date());
     } catch (e: any) {
       setApiError(e.message ?? 'Onbekende fout');
@@ -374,28 +353,27 @@ export default function App() {
       )}
 
       {/* Loading */}
-      {loading && !departures.length && (
+      {loading && !trips.length && (
         <View style={s.loadBox}>
           <ActivityIndicator size="large" color={BLUE} />
-          <Text style={s.loadTxt}>Vertrektijden ophalen…</Text>
+          <Text style={s.loadTxt}>Reizen ophalen…</Text>
         </View>
       )}
 
       {/* Top 5 list */}
-      {departures.length > 0 && (
+      {trips.length > 0 && (
         <ScrollView style={s.list} contentContainerStyle={{ paddingBottom: 20 }}>
-          <Text style={s.listHdr}>Top {departures.length} snelste treinen</Text>
-          {departures.map((dep, i) => (
-            <TrainCard key={i} dep={dep} />
+          <Text style={s.listHdr}>Top {trips.length} snelste reizen</Text>
+          {trips.map((trip, i) => (
+            <TrainCard key={i} trip={trip} dest={DESTINATION_LABEL} />
           ))}
         </ScrollView>
       )}
 
       {/* Empty */}
-      {!loading && !apiError && !locError && departures.length === 0 && station && (
+      {!loading && !apiError && !locError && trips.length === 0 && station && (
         <View style={s.empty}>
-          <Text style={s.emptyTxt}>Geen treinen naar {DESTINATION_LABEL} gevonden.</Text>
-          <Text style={s.emptySub}>Check de NS app voor reizen met overstap.</Text>
+          <Text style={s.emptyTxt}>Geen reizen naar {DESTINATION_LABEL} gevonden.</Text>
         </View>
       )}
 

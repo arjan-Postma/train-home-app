@@ -16,42 +16,33 @@ const MIME = {
   '.json': 'application/json',
 };
 
+function nsGet(path, res) {
+  const nsUrl = `https://gateway.apiportal.ns.nl/reisinformatie-api${path}`;
+  console.log('NS →', nsUrl);
+  const options = { headers: { 'Ocp-Apim-Subscription-Key': NS_API_KEY, 'Accept': 'application/json' } };
+  https.get(nsUrl, options, (nsRes) => {
+    console.log('NS status:', nsRes.statusCode);
+    let body = '';
+    nsRes.on('data', d => body += d);
+    nsRes.on('end', () => {
+      if (nsRes.statusCode !== 200) console.log('NS error:', body.slice(0, 200));
+      res.setHeader('Content-Type', 'application/json');
+      res.statusCode = nsRes.statusCode;
+      res.end(body);
+    });
+  }).on('error', (e) => {
+    res.statusCode = 502;
+    res.end(JSON.stringify({ error: e.message }));
+  });
+}
+
 http.createServer((req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
 
-  // Proxy: /api/departures?station=XXX
-  if (req.url.startsWith('/api/departures')) {
+  // Proxy: /api/trips?fromStation=XXX&toStation=YYY&dateTime=...
+  if (req.url.startsWith('/api/trips')) {
     const qs = req.url.split('?')[1] ?? '';
-    const nsUrl = `https://gateway.apiportal.ns.nl/reisinformatie-api/api/v2/departures?${qs}`;
-    console.log('NS API →', nsUrl);
-    const options = {
-      headers: {
-        'Ocp-Apim-Subscription-Key': NS_API_KEY,
-        'Accept': 'application/json',
-      },
-    };
-    https.get(nsUrl, options, (nsRes) => {
-      console.log('NS API status:', nsRes.statusCode, '| query:', qs);
-      let body = '';
-      nsRes.on('data', d => body += d);
-      nsRes.on('end', () => {
-        if (nsRes.statusCode !== 200) {
-          console.log('NS API error body:', body);
-        } else {
-          try {
-            const parsed = JSON.parse(body);
-            const deps = parsed.payload?.departures ?? [];
-            console.log(`NS API returned ${deps.length} departures, directions:`, [...new Set(deps.map(d => d.direction))].join(', '));
-          } catch(e) {}
-        }
-        res.setHeader('Content-Type', 'application/json');
-        res.statusCode = nsRes.statusCode;
-        res.end(body);
-      });
-    }).on('error', (e) => {
-      res.statusCode = 502;
-      res.end(JSON.stringify({ error: e.message }));
-    });
+    nsGet(`/api/v3/trips?${qs}`, res);
     return;
   }
 
