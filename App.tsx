@@ -385,9 +385,26 @@ export default function App() {
         throw new Error(`NS API fout ${res.status}`);
       }
       const data = await res.json();
-      const parsed: Trip[] = (data.trips ?? [])
+      let parsed: Trip[] = (data.trips ?? [])
         .map(parseTrip)
         .filter(Boolean) as Trip[];
+
+      // Top up to at least 3 future trips if needed
+      const futureNow = parsed.filter(t => secsUntil(t.departureTime) > 0);
+      if (futureNow.length < 3 && parsed.length > 0) {
+        const lastTrip = parsed[parsed.length - 1];
+        const laterTime = encodeURIComponent(
+          new Date(new Date(lastTrip.departureTime).getTime() + 60000).toISOString()
+        );
+        const res2 = await fetch(
+          `/api/trips?fromStation=${stationCode}&toStation=${toCode}&dateTime=${laterTime}&searchForArrival=false&travelClass=2&maxTransfers=1&numJourneys=5`
+        );
+        if (res2.ok) {
+          const data2 = await res2.json();
+          const extra: Trip[] = (data2.trips ?? []).map(parseTrip).filter(Boolean) as Trip[];
+          parsed = [...parsed, ...extra];
+        }
+      }
 
       setTrips(parsed);
       setRefreshed(new Date());
